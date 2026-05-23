@@ -36,7 +36,7 @@ This project uses **transfer learning**: rather than training from random weight
 require hundreds of thousands of images and days of compute), we start from a model already
 trained on MS-COCO and adapt it to the 20-class VOC vocabulary. We customise:
 
-- **The backbone freeze schedule** — the backbone is locked for the first 15 epochs so only the
+- **The backbone freeze schedule** — the backbone is locked for the first 25 epochs so only the
   detection head adapts, preventing the pretrained features from being destroyed early in training.
 - **The optimiser and LR schedule** — AdamW with cosine decay and a 3-epoch warmup.
 - **The augmentation pipeline** — mosaic, mixup, copy-paste, and HSV jitter specifically tuned
@@ -203,13 +203,13 @@ them significantly faster than two-stage detectors like Faster R-CNN.
           ╔═════════════▼═══════════════▼═══════════════▼═══════════════════════╗
           ║         HEAD — Decoupled Anchor-Free  (layer 22)                    ║
           ║                                                                     ║
-          ║  Branch S (stride  8, 64×64):  detects small objects   (< 32 px)   ║
-          ║  Branch M (stride 16, 32×32):  detects medium objects  (32–96 px)  ║
-          ║  Branch L (stride 32, 16×16):  detects large objects   (> 96 px)   ║
+          ║  Branch S (stride  8, 64×64):  detects small objects   (< 32 px)    ║
+          ║  Branch M (stride 16, 32×32):  detects medium objects  (32–96 px)   ║
+          ║  Branch L (stride 32, 16×16):  detects large objects   (> 96 px)    ║
           ║                                                                     ║
           ║  Each branch:                                                       ║
-          ║    ┌─ Box branch  (DFL) ─► Δ(cx, cy, w, h) per cell                ║
-          ║    └─ Cls branch  (BCE) ─► 20 class scores per cell                ║
+          ║    ┌─ Box branch  (DFL) ─► Δ(cx, cy, w, h) per cell                 ║
+          ║    └─ Cls branch  (BCE) ─► 20 class scores per cell                 ║
           ╚═════════════════════════════════════════════════════════════════════╝
                                        │
                     ┌──────────────────▼─────────────────────┐
@@ -265,7 +265,7 @@ overfit. Instead, we start from **COCO-pretrained weights** (`yolov8m.pt`): the 
 understands edges, textures, and shapes from 118,000 COCO images. All 20 VOC classes are
 subsets of COCO's 80 classes, so the pretrained feature representations are highly relevant.
 
-### Phase 1 — Frozen Backbone (Epochs 1–15)
+### Phase 1 — Frozen Backbone (Epochs 1–25)
 
 In the first phase, **backbone layers 0–9 are frozen** (no gradient updates). Only the neck and
 detection head are trained. This is important because:
@@ -280,19 +280,19 @@ detection head are trained. This is important because:
 > which causes a gradient error during training. The notebook uses a custom `on_train_start`
 > callback that manually freezes layers 0–9 while explicitly leaving DFL trainable.
 
-### Phase 2 — Full Fine-Tune (Epochs 16–30)
+### Phase 2 — Full Fine-Tune (Epochs 26–30)
 
-All layers are unfrozen and the entire network is fine-tuned at **10× lower learning rate**
-(0.0001). The lower LR prevents the now-stable head from overwriting the pretrained backbone
+All layers are unfrozen and the entire network is fine-tuned at a **lower learning rate**
+(0.0005). The lower LR prevents the now-stable head from overwriting the pretrained backbone
 features with large gradient updates.
 
 ### Summary of Training Configuration
 
 | Setting | Phase 1 | Phase 2 |
 |---|---|---|
-| Epochs | 15 | 15 |
+| Epochs | 25 | 5 |
 | Frozen layers | Backbone (0–9) | None |
-| Learning rate | 0.001 | 0.0001 |
+| Learning rate | 0.001 | 0.0005 |
 | LR schedule | Cosine decay | Cosine decay |
 | Warmup epochs | 3 | 0 |
 | Optimiser | AdamW | AdamW |
@@ -397,8 +397,8 @@ Run cells sequentially from top to bottom. Each group is labelled with a `# STEP
 | 26 | 3 | Builds `voc_dataset/` symlink tree and writes `voc.yaml` |
 | 27 | 4 | Sanity-checks one image/label pair |
 | 28 | 5 | Loads `yolov8m.pt` (auto-downloaded by Ultralytics if missing) |
-| 29 | 6 | **Phase 1 training** — backbone frozen, trains neck + head for 15 epochs (~15 min) |
-| 30 | 7 | **Phase 2 training** — all layers unfrozen, 15 more epochs at lower LR (~20 min) |
+| 29 | 6 | **Phase 1 training** — backbone frozen, trains neck + head for 25 epochs (~15 min) |
+| 30 | 7 | **Phase 2 training** — all layers unfrozen, 5 more epochs at lower LR (~20 min) |
 | 31 | 8 | Evaluates best checkpoint on test set — prints mAP and per-class AP@0.5 |
 | 32 | — | Side-by-side GT vs prediction visualisation on one random test image |
 | 33–34 | — | Task 1 write-up: architecture design, strategy, results summary (markdown) |
